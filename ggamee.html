@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>지브리 픽셀 공룡 점프 게임</title>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #98D8AA;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: 'Press Start 2P', cursive, sans-serif;
+            user-select: none;
+        }
+
+        #game-wrapper {
+            position: relative;
+            width: 800px;
+            height: 450px;
+            border: 10px solid #3E2723;
+            border-radius: 12px;
+            box-shadow: 0 16px 32px rgba(0,0,0,0.3);
+            background: #87CEEB;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+            width: 800px;
+            height: 450px;
+            image-rendering: pixelated;
+        }
+
+        /* 오른쪽 상단 UI (타이머, 사망 횟수, 레이저 쿨타임) */
+        .status-box {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            z-index: 10;
+        }
+
+        .status-item {
+            font-size: 11px;
+            color: #2D4A22;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 8px 12px;
+            border: 3px solid #567D46;
+            border-radius: 6px;
+            text-align: right;
+            box-shadow: 2px 2px 0 #3E5A32;
+        }
+
+        .ready {
+            color: #1B5E20;
+            font-weight: bold;
+        }
+
+        .cooldown {
+            color: #D32F2F;
+        }
+
+        /* 컨트롤 안내 문구 */
+        .controls-info {
+            position: absolute;
+            bottom: 15px;
+            left: 15px;
+            font-size: 10px;
+            color: #2D4A22;
+            background: rgba(255, 255, 255, 0.85);
+            padding: 6px 10px;
+            border: 2px solid #567D46;
+            border-radius: 4px;
+            z-index: 10;
+        }
+
+        #overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.45);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 20;
+        }
+
+        #game-title {
+            color: #FFF;
+            font-size: 24px;
+            text-shadow: 3px 3px #3E2723;
+            margin-bottom: 25px;
+            text-align: center;
+        }
+
+        #start-btn {
+            padding: 14px 28px;
+            font-family: 'Press Start 2P', cursive, sans-serif;
+            font-size: 14px;
+            color: white;
+            background-color: #4CAF50;
+            border: 4px solid #1B5E20;
+            border-radius: 6px;
+            cursor: pointer;
+            box-shadow: 0 6px 0 #1B5E20;
+        }
+
+        #start-btn:active {
+            transform: translateY(4px);
+            box-shadow: 0 2px 0 #1B5E20;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-wrapper">
+        <div class="status-box">
+            <div class="status-item">TIME: <span id="timer">0.0</span>s</div>
+            <div class="status-item">DEATHS: <span id="death-count">0</span></div>
+            <div class="status-item">LASER[Z]: <span id="laser-status" class="ready">READY</span></div>
+        </div>
+
+        <div class="controls-info">SPACE: JUMP | Z: LASER</div>
+
+        <canvas id="gameCanvas" width="800" height="450"></canvas>
+
+        <div id="overlay">
+            <div id="game-title">GHIBLI DINO JUMP</div>
+            <button id="start-btn" onclick="startGame()">START GAME</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+
+        const timerDisplay = document.getElementById("timer");
+        const deathDisplay = document.getElementById("death-count");
+        const laserDisplay = document.getElementById("laser-status");
+        const overlay = document.getElementById("overlay");
+        const gameTitle = document.getElementById("game-title");
+        const startBtn = document.getElementById("start-btn");
+
+        // 게임 제어 변수
+        let isRunning = false;
+        let elapsedTime = 0;
+        let deathCount = 0;
+        let animationFrameId = null;
+        let lastTimestamp = 0;
+
+        // 가변 점프 물리 설정
+        const GRAVITY = 0.6;
+        const JUMP_FORCE = -10.5;
+        const HOLD_BOOST = -0.4;
+        let spacePressed = false;
+        let jumpHoldTimer = 0;
+
+        // 레이저 시스템 변수
+        let isLaserActive = false;
+        let laserTimer = 0; // 3초 지속
+        let laserCooldown = 0; // 10초 쿨타임
+
+        // 캐릭터 데이터
+        const dino = {
+            x: 80,
+            y: 310,
+            width: 40,
+            height: 44,
+            vy: 0,
+            isGrounded: true,
+            groundY: 310
+        };
+
+        // 장애물 및 배경
+        let obstacles = [];
+        let spawnTimer = 0;
+
+        let clouds = [
+            { x: 100, y: 50, speed: 0.3, size: 1.2 },
+            { x: 400, y: 80, speed: 0.2, size: 0.9 },
+            { x: 650, y: 40, speed: 0.4, size: 1.5 }
+        ];
+
+        // 키 입력 처리
+        window.addEventListener("keydown", (e) => {
+            if (e.code === "Space") {
+                e.preventDefault();
+                if (!spacePressed && dino.isGrounded && isRunning) {
+                    dino.vy = JUMP_FORCE;
+                    dino.isGrounded = false;
+                    jumpHoldTimer = 0;
+                }
+                spacePressed = true;
+            }
+
+            // Z 키: 레이저 발사
+            if ((e.code === "KeyZ" || e.key === "z" || e.key === "Z") && isRunning) {
+                if (laserCooldown <= 0 && !isLaserActive) {
+                    isLaserActive = true;
+                    laserTimer = 3.0; // 3초간 발사
+                    laserCooldown = 10.0; // 쿨타임 10초 시작
+                }
+            }
+        });
+
+        window.addEventListener("keyup", (e) => {
+            if (e.code === "Space") {
+                spacePressed = false;
+            }
+        });
+
+        // 게임 시작
+        function startGame() {
+            overlay.style.display = "none";
+            isRunning = true;
+            elapsedTime = 0;
+            obstacles = [];
+            spawnTimer = 80;
+
+            dino.y = dino.groundY;
+            dino.vy = 0;
+            dino.isGrounded = true;
+
+            // 레이저 리셋
+            isLaserActive = false;
+            laserTimer = 0;
+            laserCooldown = 0;
+            updateLaserUI();
+
+            lastTimestamp = performance.now();
+            if (animationFrameId) cancelAnimationFrame(animationFrameId);
+            animationFrameId = requestAnimationFrame(gameLoop);
+        }
+
+        // 메인 게임 루프
+        function gameLoop(timestamp) {
+            if (!isRunning) return;
+
+            const dt = (timestamp - lastTimestamp) / 1000;
+            lastTimestamp = timestamp;
+
+            elapsedTime += dt;
+            timerDisplay.innerText = elapsedTime.toFixed(1);
+
+            // 레이저 상태 업데이트
+            updateLaserState(dt);
+
+            update();
+            draw();
+
+            animationFrameId = requestAnimationFrame(gameLoop);
+        }
+
+        // 레이저 타이머 및 UI 관리
+        function updateLaserState(dt) {
+            if (isLaserActive) {
+                laserTimer -= dt;
+                if (laserTimer <= 0) {
+                    isLaserActive = false;
+                    laserTimer = 0;
+                }
+            }
+
+            if (laserCooldown > 0) {
+                laserCooldown -= dt;
+                if (laserCooldown < 0) laserCooldown = 0;
+            }
+
+            updateLaserUI();
+        }
+
+        function updateLaserUI() {
+            if (isLaserActive) {
+                laserDisplay.className = "cooldown";
+                laserDisplay.innerText = `FIRING (${laserTimer.toFixed(1)}s)`;
+            } else if (laserCooldown > 0) {
+                laserDisplay.className = "cooldown";
+                laserDisplay.innerText = `${laserCooldown.toFixed(1)}s`;
+            } else {
+                laserDisplay.className = "ready";
+                laserDisplay.innerText = "READY";
+            }
+        }
+
+        // 상태 업데이트
+        function update() {
+            // 1. 점프 물리
+            if (spacePressed && !dino.isGrounded && jumpHoldTimer < 14) {
+                dino.vy += HOLD_BOOST;
+                jumpHoldTimer++;
+            }
+
+            dino.vy += GRAVITY;
+            dino.y += dino.vy;
+
+            if (dino.y >= dino.groundY) {
+                dino.y = dino.groundY;
+                dino.vy = 0;
+                dino.isGrounded = true;
+            }
+
+            // 2. 구름 이동
+            clouds.forEach(c => {
+                c.x -= c.speed;
+                if (c.x < -100) c.x = 850;
+            });
+
+            // 3. 선인장 생성 (확률적으로 1~8개 뭉쳐서 생성)
+            spawnTimer--;
+            if (spawnTimer <= 0) {
+                const count = Math.floor(Math.random() * 8) + 1; // 1~8개 무작위
+                const cactusWidth = 18;
+                const totalWidth = count * cactusWidth;
+
+                obstacles.push({
+                    x: 820,
+                    y: 306,
+                    count: count,
+                    width: totalWidth,
+                    height: 48
+                });
+
+                // 장애물 개수가 많아질 수 있으므로 스폰 간격 조정
+                spawnTimer = Math.floor(Math.random() * 70) + 100 + (count * 5);
+            }
+
+            // 4. 장애물 이동, 레이저 파괴 및 충돌 처리
+            const laserX = dino.x + dino.width;
+            const laserY = dino.y + 12;
+            const laserHeight = 20;
+            const laserRange = 800; // 화면 전체 가로 길이
+
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                let obs = obstacles[i];
+                obs.x -= 5.8;
+
+                // 레이저 공격 처리 (레이저 광선 범위에 닿은 선인장 제거)
+                if (isLaserActive) {
+                    if (
+                        obs.x < laserX + laserRange &&
+                        obs.x + obs.width > laserX &&
+                        obs.y < laserY + laserHeight &&
+                        obs.y + obs.height > laserY
+                    ) {
+                        obstacles.splice(i, 1); // 장애물 파괴
+                        continue;
+                    }
+                }
+
+                // 플레이어 충돌 검사
+                const pad = 6;
+                if (
+                    dino.x + pad < obs.x + obs.width - pad &&
+                    dino.x + dino.width - pad > obs.x + pad &&
+                    dino.y + pad < obs.y + obs.height - pad &&
+                    dino.y + dino.height - pad > obs.y + pad
+                ) {
+                    triggerGameOver();
+                    return;
+                }
+
+                if (obs.x + obs.width < -50) {
+                    obstacles.splice(i, 1);
+                }
+            }
+        }
+
+        // 픽셀 아트 렌더링
+        function draw() {
+            ctx.clearRect(0, 0, 800, 450);
+
+            // 하늘 배경
+            let skyGrad = ctx.createLinearGradient(0, 0, 0, 300);
+            skyGrad.addColorStop(0, "#9AD0EC");
+            skyGrad.addColorStop(1, "#E3F2C1");
+            ctx.fillStyle = skyGrad;
+            ctx.fillRect(0, 0, 800, 350);
+
+            // 구름
+            ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
+            clouds.forEach(c => drawCloud(c.x, c.y, c.size));
+
+            // 원경 산
+            ctx.fillStyle = "#A2D5AB";
+            drawMountain(120, 350, 200, 100);
+            drawMountain(400, 350, 280, 130);
+            drawMountain(700, 350, 220, 90);
+
+            // 잔디 바닥
+            ctx.fillStyle = "#557B83";
+            ctx.fillRect(0, 350, 800, 100);
+            ctx.fillStyle = "#395B64";
+            ctx.fillRect(0, 350, 800, 6);
+
+            // 공룡
+            drawDino(dino.x, dino.y);
+
+            // 레이저 그리기 (발사 중일 때)
+            if (isLaserActive) {
+                drawLaser(dino.x + dino.width, dino.y + 12);
+            }
+
+            // 선인장 장애물 뭉치
+            obstacles.forEach(obs => {
+                for (let i = 0; i < obs.count; i++) {
+                    drawCactus(obs.x + (i * 18), obs.y);
+                }
+            });
+        }
+
+        // --- 드로잉 함수 ---
+        function drawMountain(x, y, w, h) {
+            ctx.beginPath();
+            ctx.moveTo(x - w/2, y);
+            ctx.lineTo(x, y - h);
+            ctx.lineTo(x + w/2, y);
+            ctx.fill();
+        }
+
+        function drawCloud(x, y, scale) {
+            ctx.fillRect(x, y, 40 * scale, 14 * scale);
+            ctx.fillRect(x + 10 * scale, y - 6 * scale, 20 * scale, 6 * scale);
+        }
+
+        function drawDino(x, y) {
+            ctx.fillStyle = "#395B64";
+            ctx.fillRect(x + 4, y + 40, 32, 4);
+
+            ctx.fillStyle = "#4E9F3D";
+            ctx.fillRect(x + 6, y + 10, 28, 28);
+            ctx.fillRect(x + 16, y + 2, 18, 12);
+            ctx.fillRect(x, y + 18, 10, 10);
+
+            ctx.fillStyle = "#D8F3DC";
+            ctx.fillRect(x + 14, y + 20, 14, 12);
+
+            // 레이저 사용 중일 때 눈 색깔 변화 (빨간색)
+            ctx.fillStyle = isLaserActive ? "#FF1744" : "#191A19";
+            ctx.fillRect(x + 26, y + 6, 4, 4);
+
+            ctx.fillStyle = "#FFF";
+            ctx.fillRect(x + 20, y - 2, 4, 6);
+
+            ctx.fillStyle = "#1E5128";
+            if (dino.isGrounded && Math.floor(elapsedTime * 12) % 2 === 0) {
+                ctx.fillRect(x + 10, y + 38, 6, 6);
+                ctx.fillRect(x + 24, y + 34, 6, 6);
+            } else {
+                ctx.fillRect(x + 10, y + 34, 6, 6);
+                ctx.fillRect(x + 24, y + 38, 6, 6);
+            }
+        }
+
+        function drawLaser(startX, startY) {
+            // 레이저 외곽 빛 (주황/빨강)
+            ctx.fillStyle = "rgba(255, 87, 34, 0.6)";
+            ctx.fillRect(startX, startY - 4, 800, 24);
+
+            // 레이저 코어 (밝은 노랑/흰색)
+            ctx.fillStyle = "#FFEE58";
+            ctx.fillRect(startX, startY, 800, 16);
+            ctx.fillStyle = "#FFFFFF";
+            ctx.fillRect(startX, startY + 4, 800, 8);
+        }
+
+        function drawCactus(x, y) {
+            ctx.fillStyle = "#1E5128";
+            ctx.fillRect(x + 5, y, 8, 48);
+            ctx.fillRect(x, y + 14, 5, 14);
+            ctx.fillRect(x, y + 14, 8, 4);
+            ctx.fillRect(x + 10, y + 20, 5, 12);
+            ctx.fillRect(x + 8, y + 20, 7, 4);
+
+            ctx.fillStyle = "#4E9F3D";
+            ctx.fillRect(x + 7, y + 2, 2, 44);
+        }
+
+        function triggerGameOver() {
+            isRunning = false;
+            cancelAnimationFrame(animationFrameId);
+
+            deathCount++;
+            deathDisplay.innerText = deathCount;
+
+            gameTitle.innerText = "GAME OVER!";
+            startBtn.innerText = "TRY AGAIN?";
+            overlay.style.display = "flex";
+        }
+    </script>
+</body>
+</html>
