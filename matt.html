@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>주변 맛집 지도 (평점 4.0+)</title>
+  <style>
+    /* 1. 기본 레이아웃 스타일 */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body, html {
+      width: 100%;
+      height: 100%;
+      font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    /* 화면 2분할 컨테이너 */
+    .container {
+      display: flex;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    /* 2. 왼쪽 사이드바 영역 */
+    .sidebar {
+      width: 380px;
+      height: 100%;
+      background-color: #ffffff;
+      border-right: 1px solid #e0e0e0;
+      display: flex;
+      flex-direction: column;
+      z-index: 10;
+      box-shadow: 2px 0 8px rgba(0, 0, 0, 0.05);
+    }
+
+    .header-box {
+      padding: 20px;
+      background-color: #f8f9fa;
+      border-bottom: 1px solid #e0e0e0;
+    }
+
+    .header-box h2 {
+      font-size: 1.2rem;
+      margin-bottom: 14px;
+      color: #222;
+    }
+
+    /* 카테고리 탭 버튼 스타일 */
+    .tab-group {
+      display: flex;
+      gap: 10px;
+    }
+
+    .tab-button {
+      flex: 1;
+      padding: 12px;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      background-color: #ffffff;
+      font-weight: bold;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+
+    /* 식당 탭 활성화 상태 (노란색 계열) */
+    .tab-button.restaurant.active {
+      background-color: #ffd43b;
+      border-color: #fcc419;
+      color: #212529;
+    }
+
+    /* 카페 탭 활성화 상태 (주황색 계열) */
+    .tab-button.cafe.active {
+      background-color: #ff922b;
+      border-color: #fd7e14;
+      color: #ffffff;
+    }
+
+    /* 결과 리스트 목록 */
+    .results-list {
+      flex: 1;
+      overflow-y: auto;
+      list-style: none;
+    }
+
+    .results-list li {
+      padding: 16px 20px;
+      border-bottom: 1px solid #f0f0f0;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+
+    .results-list li:hover {
+      background-color: #f8f9fa;
+    }
+
+    .place-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+
+    .place-title {
+      font-weight: bold;
+      font-size: 16px;
+      color: #222;
+    }
+
+    .rating-badge {
+      background-color: #fff4e6;
+      color: #d9480f;
+      font-size: 12px;
+      font-weight: bold;
+      padding: 3px 8px;
+      border-radius: 12px;
+      border: 1px solid #ffe066;
+    }
+
+    .place-address {
+      font-size: 13px;
+      color: #666;
+      margin-bottom: 4px;
+    }
+
+    .place-category {
+      font-size: 11px;
+      color: #888;
+    }
+
+    .status-msg {
+      padding: 30px 20px;
+      text-align: center;
+      color: #888;
+      font-size: 14px;
+    }
+
+    /* 3. 오른쪽 지도 영역 */
+    .map-container {
+      flex: 1;
+      height: 100%;
+      position: relative;
+    }
+
+    #map {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* 커스텀 마커(오버레이) 스타일 */
+    .custom-marker {
+      padding: 8px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: bold;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      border: 2px solid #ffffff;
+      white-space: nowrap;
+    }
+
+    /* 식당: 노란색 마커 */
+    .custom-marker.restaurant {
+      background-color: #ffd43b;
+      color: #212529;
+    }
+
+    /* 카페: 주황색 마커 */
+    .custom-marker.cafe {
+      background-color: #ff922b;
+      color: #ffffff;
+    }
+
+    /* 커스텀
