@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>주변 맛집 지도 (평점 4.0+)</title>
+  <style>
+    /* 1. 기본 레이아웃 스타일 */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body, html {
+      width: 100%;
+      height: 100%;
+      font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    /* 화면 2분할 컨테이너 */
+    .container {
+      display: flex;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    /* 2. 왼쪽 사이드바 영역 */
+    .sidebar {
+      width: 380px;
+      height: 100%;
+      background-color: #ffffff;
+      border-right: 1px solid #e0e0e0;
+      display: flex;
+      flex-direction: column;
+      z-index: 10;
+      box-shadow: 2px 0 8px rgba(0, 0, 0, 0.05);
+    }
+
+    .header-box {
+      padding: 20px;
+      background-color: #f8f9fa;
+      border-bottom: 1px solid #e0e0e0;
+    }
+
+    .header-box h2 {
+      font-size: 1.2rem;
+      margin-bottom: 14px;
+      color: #222;
+    }
+
+    /* 카테고리 탭 버튼 스타일 */
+    .tab-group {
+      display: flex;
+      gap: 10px;
+    }
+
+    .tab-button {
+      flex: 1;
+      padding: 12px;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      background-color: #ffffff;
+      font-weight: bold;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+
+    /* 식당 탭 활성화 상태 (노란색 계열) */
+    .tab-button.restaurant.active {
+      background-color: #ffd43b;
+      border-color: #fcc419;
+      color: #212529;
+    }
+
+    /* 카페 탭 활성화 상태 (주황색 계열) */
+    .tab-button.cafe.active {
+      background-color: #ff922b;
+      border-color: #fd7e14;
+      color: #ffffff;
+    }
+
+    /* 결과 리스트 목록 */
+    .results-list {
+      flex: 1;
+      overflow-y: auto;
+      list-style: none;
+    }
+
+    .results-list li {
+      padding: 16px 20px;
+      border-bottom: 1px solid #f0f0f0;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+
+    .results-list li:hover {
+      background-color: #f8f9fa;
+    }
+
+    .place-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+
+    .place-title {
+      font-weight: bold;
+      font-size: 16px;
+      color: #222;
+    }
+
+    .rating-badge {
+      background-color: #fff4e6;
+      color: #d9480f;
+      font-size: 12px;
+      font-weight: bold;
+      padding: 3px 8px;
+      border-radius: 12px;
+      border: 1px solid #ffe066;
+    }
+
+    .place-address {
+      font-size: 13px;
+      color: #666;
+      margin-bottom: 4px;
+    }
+
+    .place-category {
+      font-size: 11px;
+      color: #888;
+    }
+
+    .status-msg {
+      padding: 30px 20px;
+      text-align: center;
+      color: #888;
+      font-size: 14px;
+    }
+
+    /* 3. 오른쪽 지도 영역 */
+    .map-container {
+      flex: 1;
+      height: 100%;
+      position: relative;
+    }
+
+    #map {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* 커스텀 마커(오버레이) 스타일 */
+    .custom-marker {
+      padding: 8px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: bold;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      border: 2px solid #ffffff;
+      white-space: nowrap;
+    }
+
+    /* 식당: 노란색 마커 */
+    .custom-marker.restaurant {
+      background-color: #ffd43b;
+      color: #212529;
+    }
+
+    /* 카페: 주황색 마커 */
+    .custom-marker.cafe {
+      background-color: #ff922b;
+      color: #ffffff;
+    }
+
+    /* 커스텀 정보창 스타일 */
+    .custom-infowindow {
+      background-color: #ffffff;
+      border-radius: 8px;
+      padding: 12px 16px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      border: 1px solid #e0e0e0;
+      font-size: 13px;
+      line-height: 1.4;
+      position: relative;
+      bottom: 45px;
+    }
+
+    .custom-infowindow strong {
+      display: block;
+      font-size: 14px;
+      margin-bottom: 4px;
+      color: #111;
+    }
+
+    /* 지도를 움직일 때 나타나는 자동검색 알림 바 */
+    .map-notice {
+      position: absolute;
+      top: 15px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.7);
+      color: #fff;
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 12px;
+      z-index: 5;
+      pointer-events: none;
+    }
+  </style>
+
+  <!-- Kakao 지도 SDK 불러오기 (https 명시 및 autoload=false 추가) -->
+  <script type="text/javascript" src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=3a994b47b79d09a15e73ae1f286b011a&libraries=services&autoload=false"></script>
+</head>
+<body>
+
+  <div class="container">
+    <!-- 왼쪽 영역: 카테고리 탭 및 목록 -->
+    <div class="sidebar">
+      <div class="header-box">
+        <h2>⭐ 주변 맛집 (평점 4.0+)</h2>
+        <div class="tab-group">
+          <button id="btn-restaurant" class="tab-button restaurant active" onclick="switchCategory('restaurant')">
+            🍽️ 식당
+          </button>
+          <button id="btn-cafe" class="tab-button cafe" onclick="switchCategory('cafe')">
+            ☕ 카페
+          </button>
+        </div>
+      </div>
+      <ul id="places-list" class="results-list">
+        <li class="status-msg">지도를 불러오는 중입니다...</li>
+      </ul>
+    </div>
+
+    <!-- 오른쪽 영역: 지도 -->
+    <div class="map-container">
+      <div class="map-notice">지도를 이동하면 주변 장소를 검색합니다</div>
+      <div id="map"></div>
+    </div>
+  </div>
+
+  <script>
+    // 전역 변수 선언
+    let map = null;                      // 지도 객체
+    let placesService = null;           // 카카오 장소 검색 서비스
+    let overlays = [];                   // 지도 마커 저장 배열
+    let currentOverlay = null;           // 현재 정보창 오버레이
+    let currentCategory = 'restaurant';  // 현재 카테고리 ('restaurant' / 'cafe')
+
+    // 1. 카카오 지도 API 안전 로드
+    window.onload = function() {
+      if (typeof kakao !== 'undefined' && kakao.maps) {
+        kakao.maps.load(function () {
+          initMap();
+        });
+      } else {
+        document.getElementById('places-list').innerHTML = 
+          '<li class="status-msg">카카오 지도 API를 불러오는데 실패했습니다.<br>카카오 개발자 센터에서 Web 플랫폼 도메인을 확인해 주세요.</li>';
+      }
+    };
+
+    // 2. 지도 초기화
+    function initMap() {
+      const container = document.getElementById('map');
+      const defaultCenter = new kakao.maps.LatLng(37.566826, 126.978656); // 서울시청
+
+      const options = {
+        center: defaultCenter,
+        level: 5
+      };
+
+      map = new kakao.maps.Map(container, options);
+      placesService = new kakao.maps.services.Places();
+
+      // 지도가 멈출 때 실행되는 유휴(idle) 이벤트 등록
+      kakao.maps.event.addListener(map, 'idle', function () {
+        searchNearbyPlaces();
+      });
+
+      // 현재 사용자 위치 확인
+      getCurrentLocation();
+    }
+
+    // 3. 사용자 위치 요청
+    function getCurrentLocation() {
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          function (position) {
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+            const userLocation = new kakao.maps.LatLng(lat, lng);
+
+            map.setCenter(userLocation);
+          },
+          function (error) {
+            console.warn('Geolocation 실패:', error.message);
+            searchNearbyPlaces();
+          }
+        );
+      } else {
+        searchNearbyPlaces();
+      }
+    }
+
+    // 4. 카테고리 탭 전환
+    function switchCategory(category) {
+      if (currentCategory === category) return;
+
+      currentCategory = category;
+
+      document.getElementById('btn-restaurant').classList.toggle('active', category === 'restaurant');
+      document.getElementById('btn-cafe').classList.toggle('active', category === 'cafe');
+
+      searchNearbyPlaces();
+    }
+
+    // 5. 주변 장소 검색
+    function searchNearbyPlaces() {
+      if (!map || !placesService) return;
+
+      const center = map.getCenter();
+      const categoryCode = (currentCategory === 'restaurant') ? 'FD6' : 'CE7';
+
+      placesService.categorySearch(categoryCode, placesSearchCallback, {
+        location: center,
+        radius: 2000
+      });
+    }
+
+    // 6. 검색 결과 처리 콜백
+    function placesSearchCallback(data, status) {
+      if (status === kakao.maps.services.Status.OK) {
+        const filteredPlaces = data
+          .map(place => {
+            const simulatedRating = generateRating(place.id);
+            return {
+              name: place.place_name,
+              rating: simulatedRating,
+              address: place.road_address_name || place.address_name,
+              category: place.category_name,
+              phone: place.phone,
+              lat: parseFloat(place.y),
+              lng: parseFloat(place.x)
+            };
+          })
+          .filter(place => place.rating >= 4.0);
+
+        renderPlaces(filteredPlaces);
+      } else {
+        clearOverlays();
+        document.getElementById('places-list').innerHTML = '<li class="status-msg">주변에 검색된 장소가 없습니다.</li>';
+      }
+    }
+
+    // 7. 화면에 마커 및 리스트 출력
+    function renderPlaces(places) {
+      clearOverlays();
+
+      const listElement = document.getElementById('places-list');
+      listElement.innerHTML = '';
+
+      if (places.length === 0) {
+        listElement.innerHTML = '<li class="status-msg">주변에 평점 4.0 이상의 장소가 없습니다.</li>';
+        return;
+      }
+
+      places.forEach(item => {
+        const position = new kakao.maps.LatLng(item.lat, item.lng);
+
+        const markerContent = document.createElement('div');
+        markerContent.className = `custom-marker ${currentCategory}`;
+        markerContent.innerHTML = `★ ${item.rating} ${item.name}`;
+
+        const customOverlay = new kakao.maps.CustomOverlay({
+          position: position,
+          content: markerContent,
+          yAnchor: 1
+        });
+
+        customOverlay.setMap(map);
+        overlays.push(customOverlay);
+
+        markerContent.addEventListener('click', function () {
+          showInfoWindow(position, item);
+        });
+
+        const listItem = document.createElement('li');
+        listItem.innerHTML = `
+          <div class="place-header">
+            <span class="place-title">${item.name}</span>
+            <span class="rating-badge">★ ${item.rating}</span>
+          </div>
+          <div class="place-address">${item.address}</div>
+          <div class="place-category">${item.category}</div>
+        `;
+
+        listItem.addEventListener('click', function () {
+          map.panTo(position);
+          showInfoWindow(position, item);
+        });
+
+        listElement.appendChild(listItem);
+      });
+    }
+
+    // 8. 상세 팝업 표시
+    function showInfoWindow(position, item) {
+      if (currentOverlay) {
+        currentOverlay.setMap(null);
+      }
+
+      const infoContent = document.createElement('div');
+      infoContent.className = 'custom-infowindow';
+      infoContent.innerHTML = `
+        <strong>${item.name} (★ ${item.rating})</strong>
+        <div>${item.address}</div>
+        ${item.phone ? `<div style="color:#2b8a3e; font-size:12px; margin-top:2px;">📞 ${item.phone}</div>` : ''}
+      `;
+
+      infoContent.addEventListener('click', function () {
+        currentOverlay.setMap(null);
+      });
+
+      currentOverlay = new kakao.maps.CustomOverlay({
+        position: position,
+        content: infoContent,
+        yAnchor: 1
+      });
+
+      currentOverlay.setMap(map);
+    }
+
+    // 9. 기존 마커 지우기
+    function clearOverlays() {
+      overlays.forEach(overlay => overlay.setMap(null));
+      overlays = [];
+      if (currentOverlay) {
+        currentOverlay.setMap(null);
+      }
+    }
+
+    // 10. 가상 평점 생성 함수
+    function generateRating(placeId) {
+      let hash = 0;
+      for (let i = 0; i < placeId.length; i++) {
+        hash = placeId.charCodeAt(i) + ((hash << 5) - hash);
+      }
+      const positiveHash = Math.abs(hash);
+      const rating = 4.0 + (positiveHash % 11) / 10;
+      return rating.toFixed(1);
+    }
+  </script>
+</body>
+</html>
